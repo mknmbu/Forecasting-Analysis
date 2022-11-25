@@ -1,0 +1,1278 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[120]:
+
+
+import numpy  as np
+import pandas as pd
+
+import statsmodels.formula.api as smf
+import scipy.stats as stats
+import sys
+import os
+import math
+import matplotlib.pyplot as plt
+from datetime import datetime
+
+
+# In[121]:
+
+
+# read data from csv file
+dfgdp = pd.read_csv('./figdp.csv',header=[0],parse_dates=[0],index_col=[0])
+# quarterly data
+dfgdp.index = dfgdp.index.to_period('Q')
+dfgdp = dfgdp.sort_index()
+
+
+# In[122]:
+
+
+# read data from csv file
+dfemp = pd.read_csv('./fiempn.csv',header=[0],parse_dates=[0],index_col=[0])
+# quarterly data
+dfemp.index = dfemp.index.to_period('Q')
+dfemp = dfemp.sort_index()
+
+
+# In[123]:
+
+
+print(dfemp.head())
+
+
+# In[124]:
+
+
+## Renaming column name
+dfemp.rename(columns = {'LREM74TTFIQ156S':'emp'}, inplace = True)
+
+
+# In[125]:
+
+
+# merge data and create variables
+#
+df = dfemp.join(dfgdp[['gdp']])
+print(df.head())
+print(df.info())
+
+
+# In[126]:
+
+
+# create new variables for gdp
+df[ 'lgdp'] = 100*np.log(df['gdp'])
+df['dlgdp'] = df['lgdp'] - df['lgdp'].shift(1)
+
+# create new variables for employment
+df[ 'lemp'] = 100*np.log(df['emp'])
+df['dlemp'] = df['lemp'] - df['lemp'].shift(1)
+
+
+# In[127]:
+
+
+print(df.index[0])
+print(df.index[-1])
+print(df.head())
+print(df.info())
+
+
+# In[128]:
+
+
+# --------------------------------------------------------------------
+# -- plot graph of raw data                                         --
+# --------------------------------------------------------------------
+
+fig, ax = plt.subplots(2,1,figsize=(12,8))
+fig.suptitle('Total Gross Domestic Product for Finland', fontsize=18)
+df['lgdp'].plot(ax=ax[0],c='k')
+ax[0].set_ylabel('log GDP (constant prices)')
+ax[0].grid()
+ax[0].set_xlabel('Date')
+df['dlgdp'].plot(ax=ax[1],c='k')
+ax[1].set_ylabel('Change in log GDP (%)')
+ax[1].grid()
+ax[1].set_xlabel('Date')
+fig.tight_layout()
+fig.savefig('./fi_gdp.png')
+plt.show()
+
+
+# In[129]:
+
+
+fig, ax = plt.subplots(2,1,figsize=(12,8))
+fig.suptitle('Total Employment for Finland', fontsize=18)
+df['lemp'].plot(ax=ax[0],c='k')
+ax[0].set_ylabel('log employment (Constant rate)')
+ax[0].grid()
+ax[0].set_xlabel('Date')
+df['dlemp'].plot(ax=ax[1],c='k')
+ax[1].set_ylabel('Change in log employment (%)')
+ax[1].grid()
+ax[1].set_xlabel('Date')
+fig.tight_layout()
+fig.savefig('./fi_emp.png')
+plt.show()
+
+
+# In[130]:
+
+
+# creating lagged variables for GDP
+df['lgdp_L1'] = df['lgdp'].shift(1)
+df['lgdp_L2'] = df['lgdp'].shift(2)
+df['lgdp_L3'] = df['lgdp'].shift(3)
+df['lgdp_L4'] = df['lgdp'].shift(4)
+
+df['dlgdp_L1'] = df['dlgdp'].shift(1)
+df['dlgdp_L2'] = df['dlgdp'].shift(2)
+df['dlgdp_L3'] = df['dlgdp'].shift(3)
+df['dlgdp_L4'] = df['dlgdp'].shift(4)
+df['dlgdp_L5'] = df['dlgdp'].shift(5)
+df['dlgdp_L6'] = df['dlgdp'].shift(6)
+df['dlgdp_L7'] = df['dlgdp'].shift(7)
+df['dlgdp_L8'] = df['dlgdp'].shift(8)
+
+
+# In[131]:
+
+
+# creating lagged variables for Employment
+df['lemp_L1'] = df['lemp'].shift(1)
+df['lemp_L2'] = df['lemp'].shift(2)
+df['lemp_L3'] = df['lemp'].shift(3)
+df['lemp_L4'] = df['lemp'].shift(4)
+
+df['dlemp_L1'] = df['dlemp'].shift(1)
+df['dlemp_L2'] = df['dlemp'].shift(2)
+df['dlemp_L3'] = df['dlemp'].shift(3)
+df['dlemp_L4'] = df['dlemp'].shift(4)
+df['dlemp_L5'] = df['dlemp'].shift(5)
+df['dlemp_L6'] = df['dlemp'].shift(6)
+df['dlemp_L7'] = df['dlemp'].shift(7)
+df['dlemp_L8'] = df['dlemp'].shift(8)
+
+
+# In[132]:
+
+
+from statsmodels.tsa.stattools import adfuller
+
+
+# In[133]:
+
+
+# Stationary test of GDP
+print("Observations of Dickey-fuller test for GDP")
+dftestg = adfuller(df['gdp'],autolag='AIC')
+dfoutputg=pd.Series(dftestg[0:4],index=['Test Statistic','p-value','#lags used','number of observations used'])
+for key,value in dftestg[4].items():
+    dfoutputg['critical value (%s)'%key]= value
+print(dfoutputg)
+
+
+# In[134]:
+
+
+# Stationary test of Employment
+print("Observations of Dickey-fuller test for Employment")
+dfteste = adfuller(df['emp'],autolag='AIC')
+dfoutpute=pd.Series(dfteste[0:4],index=['Test Statistic','p-value','#lags used','number of observations used'])
+for key,value in dfteste[4].items():
+    dfoutpute['critical value (%s)'%key]= value
+print(dfoutpute)
+
+
+# In[135]:
+
+
+# --------------------------------------------------------------------
+# -- split the sample period                                        --
+# --------------------------------------------------------------------
+
+#
+# estimation period 1998-2016
+dfest = df[(df.index >= pd.Period('1998Q1')) &
+           (df.index <= pd.Period('2016Q4'))].copy()
+
+#
+# validation period 2017-2019
+#  (L4: need at least 4 more quarters ...
+#       see code further down for why)
+dfval = df[(df.index >= pd.Period('2015Q1')) &
+           (df.index <= pd.Period('2019Q4'))].copy()
+
+
+# In[23]:
+
+
+# --------------------------------------------------------------------
+# -- AR models for GDP                                                  --
+# --------------------------------------------------------------------
+
+
+# In[136]:
+
+
+# GDP AR(0) model
+gdpar0 = smf.ols('dlgdp ~ 1',
+              data=dfest).fit()
+print(gdpar0.summary())
+print()
+
+
+# In[137]:
+
+
+# GDP AR(1) model
+gdpar1 = smf.ols('dlgdp ~ dlgdp_L1',
+              data=dfest).fit()
+print(gdpar1.summary())
+print()
+
+
+# In[138]:
+
+
+# GDP AR(4) model
+gdpar4 = smf.ols('dlgdp ~ dlgdp_L1 + dlgdp_L2 + dlgdp_L3 + dlgdp_L4',
+              data=dfest).fit()
+print(gdpar4.summary())
+print()
+
+
+# In[139]:
+
+
+# GDP AR(8) model
+gdpar8 = smf.ols('dlgdp ~ dlgdp_L1 + dlgdp_L2 + dlgdp_L3 + dlgdp_L4 + dlgdp_L5 + dlgdp_L6 + dlgdp_L7 + dlgdp_L8',
+              data=dfest).fit()
+print(gdpar8.summary())
+print()
+
+
+# In[140]:
+
+
+# summary of in-sample performance for GDP
+print()
+print('Model      AIC      BIC')
+print('-----------------------')
+print('GDP AR(0) %8.2f %8.2f' % (gdpar0.aic, gdpar0.bic))
+print('GDP AR(1) %8.2f %8.2f' % (gdpar1.aic, gdpar1.bic))
+print('GDP AR(4) %8.2f %8.2f' % (gdpar4.aic, gdpar4.bic))
+print('GDP AR(8) %8.2f %8.2f' % (gdpar8.aic, gdpar8.bic))
+print()
+
+
+# In[30]:
+
+
+# --------------------------------------------------------------------
+# -- AR models for Employment                                          
+# --------------------------------------------------------------------
+
+
+# In[141]:
+
+
+# Employment AR(0) model
+empar0 = smf.ols('dlemp ~ 1',
+              data=dfest).fit()
+print(empar0.summary())
+print()
+
+
+# In[142]:
+
+
+# Employment AR(1) model
+empar1 = smf.ols('dlemp ~ dlemp_L1',
+              data=dfest).fit()
+print(empar1.summary())
+print()
+
+
+# In[143]:
+
+
+# Employment AR(4) model
+empar4 = smf.ols('dlemp ~ dlemp_L1 + dlemp_L2 + dlemp_L3 + dlemp_L4',
+              data=dfest).fit()
+print(empar4.summary())
+print()
+
+
+# In[144]:
+
+
+# Employment AR(8) model
+empar8 = smf.ols('dlemp ~ dlemp_L1 + dlemp_L2 + dlemp_L3 + dlemp_L4 + dlemp_L5 + dlemp_L6 + dlemp_L7 + dlemp_L8',
+              data=dfest).fit()
+print(empar8.summary())
+print()
+
+
+# In[145]:
+
+
+# summary of in-sample performance for Employment
+print()
+print('Model      AIC      BIC')
+print('-----------------------')
+print('EMP AR(0) %8.2f %8.2f' % (empar0.aic, empar0.bic))
+print('EMP AR(1) %8.2f %8.2f' % (empar1.aic, empar1.bic))
+print('EMP AR(4) %8.2f %8.2f' % (empar4.aic, empar4.bic))
+print('EMP AR(8) %8.2f %8.2f' % (empar8.aic, empar8.bic))
+print()
+
+
+# In[36]:
+
+
+# --------------------------------------------------------------------
+# -- create dynamic forecasts for GDP from 2016Q1 to 2019Q4         --
+# --------------------------------------------------------------------
+
+
+# In[146]:
+
+
+# observed log GDP
+lgdp = dfval['lgdp'].values
+
+# Forecast with AR(1) model
+#
+# keep forecast here
+lghat1 = np.zeros(len(dfval))
+dghat1 = np.zeros(len(dfval))
+
+
+# loop over observations
+s = 0.0
+i = 0
+n = 0
+for q, v in dfval.iterrows():
+    if q < pd.Period('2016Q1'):
+        dghat1[i] = v['dlgdp']
+        lghat1[i] = v[ 'lgdp']
+    else:
+        dghat1[i] = (gdpar1.params[0] +
+                     gdpar1.params[1]*dghat1[i-1])
+        lghat1[i] = lghat1[i-1] + dghat1[i]
+        #
+        # prediction error
+        s += (lgdp[i] - lghat1[i])**2
+        n += 1
+
+    i += 1
+
+# keep the forecast
+dfval['lghat1'] = lghat1
+
+#
+# forecast error
+gdprmse1 = np.sqrt(s/n)
+
+
+# In[147]:
+
+
+# Forecast with AR(4) model
+#
+
+#
+# keep forecast here
+lghat4 = np.zeros(len(dfval))
+dghat4 = np.zeros(len(dfval))
+
+# loop over observations
+s = 0.0
+i = 0
+n = 0
+for q, v in dfval.iterrows():
+    if q < pd.Period('2016Q1'):
+        dghat4[i] = v['dlgdp']
+        lghat4[i] = v[ 'lgdp']
+    else:
+        dghat4[i] = (gdpar4.params[0] +
+                     gdpar4.params[1]*dghat4[i-1] +
+                     gdpar4.params[2]*dghat4[i-2] +
+                     gdpar4.params[3]*dghat4[i-3] +
+                     gdpar4.params[4]*dghat4[i-4])
+        lghat4[i] = lghat4[i-1] + dghat4[i]
+        #
+        # prediction error
+        s += (lgdp[i] - lghat4[i])**2
+        n += 1
+
+    i += 1
+
+    
+# keep the forecast
+dfval['lghat4'] = lghat4
+
+#
+# forecast error
+gdprmse4 = np.sqrt(s/n)
+
+
+# In[148]:
+
+
+# Forecast with AR(8) model
+#
+
+#
+# keep forecast here
+lghat8 = np.zeros(len(dfval))
+dghat8 = np.zeros(len(dfval))
+
+# loop over observations
+s = 0.0
+i = 0
+n = 0
+for q, v in dfval.iterrows():
+    if q < pd.Period('2016Q1'):
+        dghat8[i] = v['dlgdp']
+        lghat8[i] = v[ 'lgdp']
+    else:
+        dghat8[i] = (gdpar8.params[0] +
+                     gdpar8.params[1]*dghat8[i-1] +
+                     gdpar8.params[2]*dghat8[i-2] +
+                     gdpar8.params[3]*dghat8[i-3] +
+                     gdpar8.params[4]*dghat8[i-4] +
+                     gdpar8.params[5]*dghat8[i-5] +
+                     gdpar8.params[6]*dghat8[i-6] +
+                     gdpar8.params[7]*dghat8[i-7] +
+                     gdpar8.params[8]*dghat8[i-8])
+        lghat8[i] = lghat8[i-1] + dghat8[i]
+        #
+        # prediction error
+        s += (lgdp[i] - lghat8[i])**2
+        n += 1
+
+    i += 1
+
+# keep the forecast
+dfval['lghat8'] = lghat8
+
+#
+# forecast error
+gdprmse8 = np.sqrt(s/n)
+
+
+# In[149]:
+
+
+# --------------------------------------------------------------------
+# -- summary of out-of-sample performance for GDP                   --
+# --------------------------------------------------------------------
+
+print()
+print('Model     RMSE')
+print('--------------')
+print('GDP AR(1) %8.3f' % (gdprmse1))
+print('GDP AR(4) %8.3f' % (gdprmse4))
+print('GDP AR(8) %8.3f' % (gdprmse8))
+print()
+
+
+# In[150]:
+
+
+# --------------------------------------------------------------------
+# -- plot graph of forecasts for GDP                             --
+# --------------------------------------------------------------------
+
+dfvalx = dfval[(dfval.index >= pd.Period('2016Q1'))]
+
+fig, ax = plt.subplots(figsize=(9,6))
+fig.suptitle('Forecasting GDP for Finland', fontsize=18)
+dfvalx['lgdp'].plot(c='r',label='Observed')
+dfvalx['lghat1'].plot(c='c',label='AR(1) model')
+dfvalx['lghat4'].plot(c='g',label='AR(4) model')
+dfvalx['lghat8'].plot(c='b',label='AR(8) model')
+ax.set_ylabel('log GDP')
+ax.set_xlabel('Date')
+ax.legend(loc='upper left')
+ax.grid()
+fig.tight_layout()
+plt.show()
+
+
+# In[51]:
+
+
+# --------------------------------------------------------------------
+# -- create dynamic forecasts for Employment from 2016Q1 to 2019 Q4 --
+# --------------------------------------------------------------------
+
+
+# In[151]:
+
+
+# observed log GDP
+lemp = dfval['lemp'].values
+
+
+# Forecast with AR(4) model
+#
+
+#
+# keep forecast here
+lehat4 = np.zeros(len(dfval))
+dehat4 = np.zeros(len(dfval))
+
+# loop over observations
+s = 0.0
+i = 0
+n = 0
+for q, v in dfval.iterrows():
+    if q < pd.Period('2016Q1'):
+        dehat4[i] = v['dlemp']
+        lehat4[i] = v[ 'lemp']
+    else:
+        dehat4[i] = (empar4.params[0] +
+                     empar4.params[1]*dehat4[i-1] +
+                     empar4.params[2]*dehat4[i-2] +
+                     empar4.params[3]*dehat4[i-3] +
+                     empar4.params[4]*dehat4[i-4])
+        lehat4[i] = lehat4[i-1] + dehat4[i]
+        #
+        # prediction error
+        s += (lemp[i] - lehat4[i])**2
+        n += 1
+
+    i += 1
+
+    
+# keep the forecast
+dfval['lehat4'] = lehat4
+
+#
+# forecast error
+emprmse4 = np.sqrt(s/n)
+
+
+# In[152]:
+
+
+# Forecast with AR(8) model
+#
+
+#
+# keep forecast here
+lehat8 = np.zeros(len(dfval))
+dehat8 = np.zeros(len(dfval))
+
+# loop over observations
+s = 0.0
+i = 0
+n = 0
+for q, v in dfval.iterrows():
+    if q < pd.Period('2016Q1'):
+        dehat8[i] = v['dlemp']
+        lehat8[i] = v[ 'lemp']
+    else:
+        dehat8[i] = (empar8.params[0] +
+                     empar8.params[1]*dehat8[i-1] +
+                     empar8.params[2]*dehat8[i-2] +
+                     empar8.params[3]*dehat8[i-3] +
+                     empar8.params[4]*dehat8[i-4] +
+                     empar8.params[5]*dehat8[i-5] +
+                     empar8.params[6]*dehat8[i-6] +
+                     empar8.params[7]*dehat8[i-7] +
+                     empar8.params[8]*dehat8[i-8])
+        lehat8[i] = lehat8[i-1] + dehat8[i]
+        #
+        # prediction error
+        s += (lemp[i] - lehat8[i])**2
+        n += 1
+
+    i += 1
+
+# keep the forecast
+dfval['lehat8'] = lehat8
+
+#
+# forecast error
+emprmse8 = np.sqrt(s/n)
+
+
+# In[153]:
+
+
+# --------------------------------------------------------------------
+# -- summary of out-of-sample performance for Employment            --
+# --------------------------------------------------------------------
+
+print()
+print('Model     RMSE')
+print('--------------')
+print('EMP AR(4) %8.3f' % (emprmse4))
+print('EMP AR(8) %8.3f' % (emprmse8))
+print()
+
+
+# In[154]:
+
+
+# --------------------------------------------------------------------
+# -- plot graph of forecasts for Employment                         --
+# --------------------------------------------------------------------
+
+dfvaly = dfval[(dfval.index >= pd.Period('2016Q1'))]
+
+fig, ax = plt.subplots(figsize=(9,6))
+fig.suptitle('Forecasting employment for Finland', fontsize=18)
+dfvaly['lemp'].plot(c='r',label='Observed')
+dfvaly['lehat4'].plot(c='c',label='AR(4) model')
+dfvaly['lehat8'].plot(c='g',label='AR(8) model')
+ax.set_ylabel('log Employment')
+ax.set_xlabel('Date')
+ax.legend(loc='upper left')
+ax.grid()
+fig.tight_layout()
+plt.show()
+
+
+# In[155]:
+
+
+# --------------------------------------------------------------------
+# -- split the sample period for forcasting 2020-2021               --
+# --------------------------------------------------------------------
+
+#
+# estimation period 1998-2019
+dfest = df[(df.index >= pd.Period('1998Q1')) &
+           (df.index <= pd.Period('2019Q4'))].copy()
+
+#
+# validation period 2017-2019
+#  (L4: need at least 4 more quarters ...
+#       see code further down for why)
+dfval = df[(df.index >= pd.Period('2017Q1')) &
+           (df.index <= pd.Period('2021Q4'))].copy()
+
+
+# In[ ]:
+
+
+# --------------------------------------------------------------------
+# -- AR models for GDP for forecasting 2020-2021                                          
+# --------------------------------------------------------------------
+
+
+# In[156]:
+
+
+# GDP AR(1) model
+gdpar1 = smf.ols('dlgdp ~ dlgdp_L1',
+              data=dfest).fit()
+print(gdpar1.summary())
+print()
+
+
+# In[157]:
+
+
+# GDP AR(4) model
+gdpar4 = smf.ols('dlgdp ~ dlgdp_L1 + dlgdp_L2 + dlgdp_L3 + dlgdp_L4',
+              data=dfest).fit()
+print(gdpar4.summary())
+print()
+
+
+# In[158]:
+
+
+# GDP AR(8) model
+gdpar8 = smf.ols('dlgdp ~ dlgdp_L1 + dlgdp_L2 + dlgdp_L3 + dlgdp_L4 + dlgdp_L5 + dlgdp_L6 + dlgdp_L7 + dlgdp_L8',
+              data=dfest).fit()
+print(gdpar8.summary())
+print()
+
+
+# In[159]:
+
+
+# summary of in-sample performance for GDP
+print()
+print('Model      AIC      BIC')
+print('-----------------------')
+print('GDP AR(1) %8.2f %8.2f' % (gdpar1.aic, gdpar1.bic))
+print('GDP AR(4) %8.2f %8.2f' % (gdpar4.aic, gdpar4.bic))
+print('GDP AR(8) %8.2f %8.2f' % (gdpar8.aic, gdpar8.bic))
+print()
+
+
+# In[ ]:
+
+
+# --------------------------------------------------------------------
+# -- AR models for Employment for forecasting 2020-2021                                          
+# --------------------------------------------------------------------
+
+
+# In[160]:
+
+
+# Employment AR(1) model
+empar1 = smf.ols('dlemp ~ dlemp_L1',
+              data=dfest).fit()
+print(empar1.summary())
+print()
+
+
+# In[161]:
+
+
+# Employment AR(4) model
+empar4 = smf.ols('dlemp ~ dlemp_L1 + dlemp_L2 + dlemp_L3 + dlemp_L4',
+              data=dfest).fit()
+print(empar4.summary())
+print()
+
+
+# In[162]:
+
+
+# Employment AR(8) model
+empar8 = smf.ols('dlemp ~ dlemp_L1 + dlemp_L2 + dlemp_L3 + dlemp_L4 + dlemp_L5 + dlemp_L6 + dlemp_L7 + dlemp_L8',
+              data=dfest).fit()
+print(empar8.summary())
+print()
+
+
+# In[163]:
+
+
+# summary of in-sample performance for Employment
+print()
+print('Model      AIC      BIC')
+print('-----------------------')
+print('EMP AR(1) %8.2f %8.2f' % (empar1.aic, empar1.bic))
+print('EMP AR(4) %8.2f %8.2f' % (empar4.aic, empar4.bic))
+print('EMP AR(8) %8.2f %8.2f' % (empar8.aic, empar8.bic))
+print()
+
+
+# In[106]:
+
+
+# --------------------------------------------------------------------
+# -- create dynamic forecasts for GDP from 2020Q1 to 2021Q4         --
+# --------------------------------------------------------------------
+
+
+# In[164]:
+
+
+# observed log GDP
+lgdp = dfval['lgdp'].values
+
+# Forecast with AR(1) model
+#
+# keep forecast here
+lghat1 = np.zeros(len(dfval))
+dghat1 = np.zeros(len(dfval))
+
+
+# loop over observations
+s = 0.0
+i = 0
+n = 0
+for q, v in dfval.iterrows():
+    if q < pd.Period('2019Q1'):
+        dghat1[i] = v['dlgdp']
+        lghat1[i] = v[ 'lgdp']
+    else:
+        dghat1[i] = (gdpar1.params[0] +
+                     gdpar1.params[1]*dghat1[i-1])
+        lghat1[i] = lghat1[i-1] + dghat1[i]
+        #
+        # prediction error
+        s += (lgdp[i] - lghat1[i])**2
+        n += 1
+
+    i += 1
+
+# keep the forecast
+dfval['lghat1'] = lghat1
+
+#
+# forecast error
+gdprmse1 = np.sqrt(s/n)
+
+
+# In[165]:
+
+
+# Forecast with AR(4) model
+#
+
+#
+# keep forecast here
+lghat4 = np.zeros(len(dfval))
+dghat4 = np.zeros(len(dfval))
+
+# loop over observations
+s = 0.0
+i = 0
+n = 0
+for q, v in dfval.iterrows():
+    if q < pd.Period('2019Q1'):
+        dghat4[i] = v['dlgdp']
+        lghat4[i] = v[ 'lgdp']
+    else:
+        dghat4[i] = (gdpar4.params[0] +
+                     gdpar4.params[1]*dghat4[i-1] +
+                     gdpar4.params[2]*dghat4[i-2] +
+                     gdpar4.params[3]*dghat4[i-3] +
+                     gdpar4.params[4]*dghat4[i-4])
+        lghat4[i] = lghat4[i-1] + dghat4[i]
+        #
+        # prediction error
+        s += (lgdp[i] - lghat4[i])**2
+        n += 1
+
+    i += 1
+
+    
+# keep the forecast
+dfval['lghat4'] = lghat4
+
+#
+# forecast error
+gdprmse4 = np.sqrt(s/n)
+
+
+# In[166]:
+
+
+# Forecast with AR(8) model
+#
+
+#
+# keep forecast here
+lghat8 = np.zeros(len(dfval))
+dghat8 = np.zeros(len(dfval))
+
+# loop over observations
+s = 0.0
+i = 0
+n = 0
+for q, v in dfval.iterrows():
+    if q < pd.Period('2019Q1'):
+        dghat8[i] = v['dlgdp']
+        lghat8[i] = v[ 'lgdp']
+    else:
+        dghat8[i] = (gdpar8.params[0] +
+                     gdpar8.params[1]*dghat8[i-1] +
+                     gdpar8.params[2]*dghat8[i-2] +
+                     gdpar8.params[3]*dghat8[i-3] +
+                     gdpar8.params[4]*dghat8[i-4] +
+                     gdpar8.params[5]*dghat8[i-5] +
+                     gdpar8.params[6]*dghat8[i-6] +
+                     gdpar8.params[7]*dghat8[i-7] +
+                     gdpar8.params[8]*dghat8[i-8])
+        lghat8[i] = lghat8[i-1] + dghat8[i]
+        #
+        # prediction error
+        s += (lgdp[i] - lghat8[i])**2
+        n += 1
+
+    i += 1
+
+# keep the forecast
+dfval['lghat8'] = lghat8
+
+#
+# forecast error
+gdprmse8 = np.sqrt(s/n)
+
+
+# In[167]:
+
+
+# --------------------------------------------------------------------
+# -- summary of out-of-sample performance for GDP                   --
+# --------------------------------------------------------------------
+
+print()
+print('Model     RMSE')
+print('--------------')
+print('GDP AR(1) %8.3f' % (gdprmse1))
+print('GDP AR(4) %8.3f' % (gdprmse4))
+print('GDP AR(8) %8.3f' % (gdprmse8))
+print()
+
+
+# In[168]:
+
+
+# --------------------------------------------------------------------
+# -- plot graph of forecasts for GDP                                --
+# --------------------------------------------------------------------
+
+dfvalx = dfval[(dfval.index >= pd.Period('2019Q4'))]
+
+fig, ax = plt.subplots(figsize=(9,6))
+fig.suptitle('Forecasting GDP for Finland', fontsize=18)
+dfvalx['lgdp'].plot(c='r',label='Observed')
+dfvalx['lghat1'].plot(c='c',label='AR(1) model')
+dfvalx['lghat4'].plot(c='g',label='AR(4) model')
+dfvalx['lghat8'].plot(c='b',label='AR(8) model')
+ax.set_ylabel('log GDP')
+ax.set_xlabel('Date')
+ax.legend(loc='upper left')
+ax.grid()
+fig.tight_layout()
+plt.show()
+
+
+# In[114]:
+
+
+# --------------------------------------------------------------------
+# -- create dynamic forecasts for Employment from 2020Q1 to 2021 Q4 --
+# --------------------------------------------------------------------
+
+
+# In[169]:
+
+
+# observed log GDP
+lemp = dfval['lemp'].values
+
+
+# Forecast with AR(4) model
+#
+
+#
+# keep forecast here
+lehat4 = np.zeros(len(dfval))
+dehat4 = np.zeros(len(dfval))
+
+# loop over observations
+s = 0.0
+i = 0
+n = 0
+for q, v in dfval.iterrows():
+    if q < pd.Period('2019Q1'):
+        dehat4[i] = v['dlemp']
+        lehat4[i] = v[ 'lemp']
+    else:
+        dehat4[i] = (empar4.params[0] +
+                     empar4.params[1]*dehat4[i-1] +
+                     empar4.params[2]*dehat4[i-2] +
+                     empar4.params[3]*dehat4[i-3] +
+                     empar4.params[4]*dehat4[i-4])
+        lehat4[i] = lehat4[i-1] + dehat4[i]
+        #
+        # prediction error
+        s += (lemp[i] - lehat4[i])**2
+        n += 1
+
+    i += 1
+
+    
+# keep the forecast
+dfval['lehat4'] = lehat4
+
+#
+# forecast error
+emprmse4 = np.sqrt(s/n)
+
+
+# In[170]:
+
+
+# Forecast with AR(8) model
+#
+
+#
+# keep forecast here
+lehat8 = np.zeros(len(dfval))
+dehat8 = np.zeros(len(dfval))
+
+# loop over observations
+s = 0.0
+i = 0
+n = 0
+for q, v in dfval.iterrows():
+    if q < pd.Period('2016Q1'):
+        dehat8[i] = v['dlemp']
+        lehat8[i] = v[ 'lemp']
+    else:
+        dehat8[i] = (empar8.params[0] +
+                     empar8.params[1]*dehat8[i-1] +
+                     empar8.params[2]*dehat8[i-2] +
+                     empar8.params[3]*dehat8[i-3] +
+                     empar8.params[4]*dehat8[i-4] +
+                     empar8.params[5]*dehat8[i-5] +
+                     empar8.params[6]*dehat8[i-6] +
+                     empar8.params[7]*dehat8[i-7] +
+                     empar8.params[8]*dehat8[i-8])
+        lehat8[i] = lehat8[i-1] + dehat8[i]
+        #
+        # prediction error
+        s += (lemp[i] - lehat8[i])**2
+        n += 1
+
+    i += 1
+
+# keep the forecast
+dfval['lehat8'] = lehat8
+
+#
+# forecast error
+emprmse8 = np.sqrt(s/n)
+
+
+# In[171]:
+
+
+# --------------------------------------------------------------------
+# -- summary of out-of-sample performance for Employment            --
+# --------------------------------------------------------------------
+
+print()
+print('Model     RMSE')
+print('--------------')
+print('EMP AR(4) %8.3f' % (emprmse4))
+print('EMP AR(8) %8.3f' % (emprmse8))
+print()
+
+
+# In[175]:
+
+
+# --------------------------------------------------------------------
+# -- plot graph of forecasts for Employment                         --
+# --------------------------------------------------------------------
+
+dfvaly = dfval[(dfval.index >= pd.Period('2019Q4'))]
+
+fig, ax = plt.subplots(figsize=(9,6))
+fig.suptitle('Forecasting employment for Finland for 2020-2021', fontsize=18)
+dfvaly['lemp'].plot(c='r',label='Observed')
+dfvaly['lehat4'].plot(c='c',label='AR(4) model')
+ax.set_ylabel('log Employment')
+ax.set_xlabel('Date')
+ax.legend(loc='upper left')
+ax.grid()
+fig.tight_layout()
+plt.show()
+
+
+# In[ ]:
+
+
+# --------------------------------------------------------------------
+# -- VAR (4) model for GDP and Employment            --
+# --------------------------------------------------------------------
+
+
+# In[186]:
+
+
+# VAR4 model for GDP (no seasonal dummies)
+#
+var4g = smf.ols(formula='dlgdp ~ dlgdp_L1 + dlgdp_L2 + dlgdp_L3 + dlgdp_L4 + dlemp_L1 + dlemp_L2 + dlemp_L3 + dlemp_L4',data=dfest).fit().get_robustcov_results(cov_type='HAC',maxlags=4)
+print(var4g.summary())
+
+
+# In[188]:
+
+
+# observed log GDP
+lgdp = dfval['lgdp'].values
+
+# Forecast with AR(8) model
+#
+
+#
+# keep forecast here
+lghatv4 = np.zeros(len(dfval))
+dghatv4 = np.zeros(len(dfval))
+
+# loop over observations
+s = 0.0
+i = 0
+n = 0
+for q, v in dfval.iterrows():
+    if q < pd.Period('2019Q1'):
+        dghatv4[i] = v['dlgdp']
+        lghatv4[i] = v[ 'lgdp']
+    else:
+        dghatv4[i] = (var4g.params[0] +
+                     var4g.params[1]*dghatv4[i-1] +
+                     var4g.params[2]*dghatv4[i-2] +
+                     var4g.params[3]*dghatv4[i-3] +
+                     var4g.params[4]*dghatv4[i-4] +
+                     var4g.params[5]*dghatv4[i-5] +
+                     var4g.params[6]*dghatv4[i-6] +
+                     var4g.params[7]*dghatv4[i-7] +
+                     var4g.params[8]*dghatv4[i-8])
+        lghatv4[i] = lghatv4[i-1] + dghatv4[i]
+        #
+        # prediction error
+        s += (lgdp[i] - lghatv4[i])**2
+        n += 1
+
+    i += 1
+
+# keep the forecast
+dfval['lghatv4'] = lghatv4
+
+#
+# forecast error
+gdprmsev4 = np.sqrt(s/n)
+
+
+# In[190]:
+
+
+# --------------------------------------------------------------------
+# -- summary of out-of-sample performance for GDP                   --
+# --------------------------------------------------------------------
+
+print()
+print('Model     RMSE')
+print('--------------')
+print('GDP VAR(4) %6.4f' % (gdprmsev4))
+print()
+
+
+# In[201]:
+
+
+# VAR4 model for GDP
+
+# only plot a short time period
+dfvalz = dfval[(dfval.index >= pd.Period('2019Q4'))]
+#
+fig, ax = plt.subplots(figsize=(9,6))
+fig.suptitle('Predicted Real GDP of Finland' , fontsize=18)
+dfvalz['lgdp'].plot(ax=ax,c='k',label='Observed GDP')
+dfvalz['lghat4'].plot(c='r',label='AR(4) model')
+dfvalz['lghatv4'].plot(ax=ax,c='g',label='Dynamic VAR(4) forecast')
+ax.set_ylabel('Log of Real GDP')
+ax.set_xlabel('Time')
+ax.legend(loc='upper left')
+ax.grid()
+fig.tight_layout()
+plt.show()
+
+
+# In[ ]:
+
+
+
+
+
+# In[187]:
+
+
+# VAR4 model for Employment (no seasonal dummies)
+#
+var4e = smf.ols(formula='dlemp ~ dlemp_L1 + dlemp_L2 + dlemp_L3 + dlemp_L4 + dlgdp_L1 + dlgdp_L2 + dlgdp_L3 + dlgdp_L4',data=dfest).fit().get_robustcov_results(cov_type='HAC',maxlags=4)
+print(var4e.summary())
+
+
+# In[197]:
+
+
+# observed log Employment
+lemp = dfval['lemp'].values
+
+# Forecast with AR(8) model
+#
+
+#
+# keep forecast here
+lehatv4 = np.zeros(len(dfval))
+dehatv4 = np.zeros(len(dfval))
+
+# loop over observations
+s = 0.0
+i = 0
+n = 0
+for q, v in dfval.iterrows():
+    if q < pd.Period('2019Q1'):
+        dehatv4[i] = v['dlemp']
+        lehatv4[i] = v[ 'lemp']
+    else:
+        dehatv4[i] = (var4e.params[0] +
+                     var4e.params[1]*dehatv4[i-1] +
+                     var4e.params[2]*dehatv4[i-2] +
+                     var4e.params[3]*dehatv4[i-3] +
+                     var4e.params[4]*dehatv4[i-4] +
+                     var4e.params[5]*dehatv4[i-5] +
+                     var4e.params[6]*dehatv4[i-6] +
+                     var4e.params[7]*dehatv4[i-7] +
+                     var4e.params[8]*dehatv4[i-8])
+        lehatv4[i] = lehatv4[i-1] + dehatv4[i]
+        #
+        # prediction error
+        s += (lemp[i] - lehatv4[i])**2
+        n += 1
+
+    i += 1
+
+# keep the forecast
+dfval['lehatv4'] = lehatv4
+
+#
+# forecast error
+emprmsev4 = np.sqrt(s/n)
+
+
+# In[198]:
+
+
+# --------------------------------------------------------------------
+# -- summary of out-of-sample performance for GDP                   --
+# --------------------------------------------------------------------
+
+print()
+print('Model     RMSE')
+print('--------------')
+print('EMP VAR(4) %6.4f' % (emprmsev4))
+print()
+
+
+# In[203]:
+
+
+# VAR4 model for Employment
+
+# only plot a short time period
+dfvalv = dfval[(dfval.index >= pd.Period('2019Q4'))]
+#
+fig, ax = plt.subplots(figsize=(9,6))
+fig.suptitle('Predicted Real Employment of Finland' , fontsize=18)
+dfvalv['lemp'].plot(ax=ax,c='k',label='Observed Employment')
+dfvalv['lehat4'].plot(c='b',label='AR(4) model')
+dfvalv['lehatv4'].plot(ax=ax,c='g',label='Dynamic VAR(4) forecast')
+ax.set_ylabel('Log of Real Employment')
+ax.set_xlabel('Time')
+ax.legend(loc='upper left')
+ax.grid()
+fig.tight_layout()
+plt.show()
+
+
+# In[ ]:
+
+
+
+
