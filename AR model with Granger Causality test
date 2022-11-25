@@ -1,0 +1,596 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[19]:
+
+
+import numpy  as np
+import pandas as pd
+
+import statsmodels.formula.api as smf
+import scipy.stats as stats
+
+import linearmodels.iv as iv
+
+import wooldridge as woo
+
+
+# In[20]:
+
+
+import fredapi as fa
+
+
+# In[21]:
+
+
+import pandas_datareader as pdr
+
+
+# In[22]:
+
+
+## Qeustion 1: Converting GDP data into qurter form
+
+df = pd.read_csv('gdpc1.csv',parse_dates=[0])
+df['DATE'] = df['DATE'].dt.to_period('Q')
+df = df.set_index('DATE').sort_index()
+
+
+# In[23]:
+
+
+print (df.head())
+
+
+# In[24]:
+
+
+## Qeustion 1: Converting OIL index data into qurter form
+
+df2 = pd.read_csv('WPU0561.csv',parse_dates=[0])
+df2['DATE'] = df2['DATE'].dt.to_period('M')
+df2 = df2.set_index('DATE').sort_index()
+df2 = df2.resample('Q').last()
+
+
+# In[25]:
+
+
+print (df2.head())
+
+
+# In[26]:
+
+
+##Combined both variable into one csv file in excel
+##importing data file
+cdf = pd.read_csv('gdpoil.csv')
+print (cdf.info())
+
+
+# In[27]:
+
+
+## Question 2: Summary of two variables
+print (cdf.describe())
+
+
+# In[28]:
+
+
+## converting into log form
+cdf['lgdp' ] = np.log(cdf['gdp'])
+cdf['loil' ] = np.log(cdf['oil'])
+
+
+# In[29]:
+
+
+##Line graph of log version of both variables
+import matplotlib.pyplot as plt
+
+
+# In[47]:
+
+
+## defining the period of 1947 to 1990
+cdfgraph = cdf.iloc[0:175]
+
+
+# In[48]:
+
+
+fig, ax = plt.subplots(2,1,figsize=(9,6))
+fig.suptitle('Real GDP and Oil')
+
+ax[0].plot(cdfgraph['lgdp'],label="Real GDP", color="red")
+ax[0].set_xlabel('Time')
+ax[0].set_ylabel('Log GDP')
+ax[0].legend(loc="upper left")
+ax[0].grid()
+
+ax[1].plot(cdfgraph['loil'],label="Oil Price Index", color="blue")
+ax[1].set_xlabel('Time')
+ax[1].set_ylabel('Log Oil Price Index')
+ax[1].legend(loc="upper left")
+ax[1].grid()
+
+
+# In[ ]:
+
+
+## Real GDP shows almost a linear increasing trend where oil price index was stable till 1973-74. After that the oil price jumped
+## that caused the index rise around 100 from 12 due to an oil embargo by Arab producers against the U.S. It happened the same
+## in 2012 when there was Changes in global economic growth expectations and oil supply disruptions. The index rose up to 300.
+
+
+# In[30]:
+
+
+## Hamilton's GDP and GDP change variables
+
+cdf['lgdp'] = 100*np.log(cdf['lgdp'])
+cdf['dlgdp'] = cdf['lgdp'] - cdf['lgdp'].shift(1)
+
+
+# In[31]:
+
+
+## Hamilton's oil price and oil price change variables
+cdf['loil'] = 100*np.log(cdf['loil'])
+cdf['dloil'] = cdf['loil'] - cdf['loil'].shift(1)
+cdf['dloil'] = cdf['dloil'].fillna(0)
+
+
+# In[32]:
+
+
+## cumulative change in oil price
+cdf['cdop'] = cdf['dloil'].cumsum()
+
+
+# In[33]:
+
+
+## maximum oil price change last three years
+cdf['maxp'] = cdf['cdop'].rolling(window=12,min_periods=1).max()
+cdf['maxp'] = cdf['maxp'].fillna(0)
+
+
+# In[35]:
+
+
+## Hamilton's oil price measure
+cdf['jpmax'] = cdf['cdop'] - cdf['maxp'].shift(1)
+cdf.loc[cdf['jpmax'] < 0,'jpmax'] = 0
+
+
+# In[49]:
+
+
+## plot change in log GDP and oil price series
+fig, ax = plt.subplots(2,1,figsize=(9,6))
+fig.suptitle('US Growth in Real GDP and Oil Prices')
+
+ax[0].plot(cdfgraph['dlgdp'],label="Change in Real GDP", color="red")
+ax[0].set_xlabel('Time')
+ax[0].set_ylabel('Growth in GDP (%)')
+ax[0].legend(loc="upper left")
+ax[0].grid()
+
+ax[1].plot(cdfgraph['jpmax'],label="Oil Price Change Index", color="blue")
+ax[1].set_xlabel('Time')
+ax[1].set_ylabel('Oil Price Change')
+ax[1].legend(loc="upper left")
+ax[1].grid()
+
+
+# In[ ]:
+
+
+## Change in real GDP was so much fluctuating in the begining but it became stable over the time with
+## minimum or zero change in values. Contrary, change in oil price index was stable over time,
+## except the significant incedents in the history of oil price fluctuations.
+
+
+# In[36]:
+
+
+## Test of Stationarity - GDP, Oil price and oil price change jpmax
+
+# Null Hypothesis (Ho): is non-stationary.
+# Alternate Hypothesis (H1): is stationary.
+
+from statsmodels.tsa.stattools import adfuller
+
+
+# In[37]:
+
+
+# Stationary test of GDP
+print("Observations of Dickey-fuller test")
+dftest = adfuller(cdf['gdp'],autolag='AIC')
+dfoutput=pd.Series(dftest[0:4],index=['Test Statistic','p-value','#lags used','number of observations used'])
+for key,value in dftest[4].items():
+    dfoutput['critical value (%s)'%key]= value
+print(dfoutput)
+
+
+# In[ ]:
+
+
+## p-value > 0.05: Fail to reject the null hypothesis (H0), the data has a unit root and is non-stationary.
+# It has some time dependent structure.
+
+
+# In[38]:
+
+
+# Stationary test of Oil price
+print("Observations of Dickey-fuller test")
+dftest = adfuller(cdf['oil'],autolag='AIC')
+dfoutput=pd.Series(dftest[0:4],index=['Test Statistic','p-value','#lags used','number of observations used'])
+for key,value in dftest[4].items():
+    dfoutput['critical value (%s)'%key]= value
+print(dfoutput)
+
+
+# In[ ]:
+
+
+## p-value > 0.05: Fail to reject the null hypothesis (H0), the data has a unit root and is non-stationary.
+# It has some time dependent structure.
+
+
+# In[39]:
+
+
+# Stationary test of oil price change measure jpmax.
+cdf2 = cdf.dropna(axis=0)
+
+
+# In[40]:
+
+
+print("Observations of Dickey-fuller test")
+dftest = adfuller(cdf2['jpmax'],autolag='AIC')
+dfoutput=pd.Series(dftest[0:4],index=['Test Statistic','p-value','#lags used','number of observations used'])
+for key,value in dftest[4].items():
+    dfoutput['critical value (%s)'%key]= value
+print(dfoutput)
+
+
+# In[ ]:
+
+
+## p-value > 0.05: Fail to reject the null hypothesis (H0), the data has a unit root and is non-stationary.
+# It has some time dependent structure.
+
+
+# In[42]:
+
+
+import numpy  as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import statsmodels.formula.api as smf
+import datetime as datetime
+
+
+# In[54]:
+
+
+## Question-04: Re-estimate Hamilton's model for Period 1949Q2-2001Q3
+## Selecting data period from 1949 to 2001
+cdf4901 = cdf.loc[9:218]
+
+
+# In[51]:
+
+
+print (cdf4901.info())
+
+
+# In[55]:
+
+
+print (cdf4901.describe())
+
+
+# In[45]:
+
+
+## creating lag variables
+
+
+# In[58]:
+
+
+pd.options.mode.chained_assignment = None  # default='warn'
+
+
+# In[59]:
+
+
+cdf4901['djgdp1'] = cdf4901['dlgdp'].shift(1)
+
+
+# In[60]:
+
+
+cdf4901['djgdp2'] = cdf4901['dlgdp'].shift(2)
+
+
+# In[61]:
+
+
+cdf4901['djgdp3'] = cdf4901['dlgdp'].shift(3)
+
+
+# In[62]:
+
+
+cdf4901['djgdp4'] = cdf4901['dlgdp'].shift(4)
+
+
+# In[63]:
+
+
+cdf4901['jpmax1'] = cdf4901['jpmax'].shift(1)
+
+
+# In[64]:
+
+
+cdf4901['jpmax2'] = cdf4901['jpmax'].shift(2)
+
+
+# In[65]:
+
+
+cdf4901['jpmax3'] = cdf4901['jpmax'].shift(3)
+
+
+# In[66]:
+
+
+cdf4901['jpmax4'] = cdf4901['jpmax'].shift(4)
+
+
+# In[67]:
+
+
+# estimate Hamilton AR(4) model
+hmod = smf.ols('dlgdp ~ djgdp1 + djgdp2 + djgdp3 + djgdp4 + jpmax1 + jpmax2 + jpmax3 + jpmax4',data=cdf4901)
+hmrs = hmod.fit()
+print(hmrs.summary())
+
+
+# In[ ]:
+
+
+## Question-04/01 :Comparison: Intercept term is quite different from the original model. Coefficients of Lags of gdp 
+#is little bit different 
+# and it gets larger in difference as the lag gets larger. Coefficient of Lags of oil price is also different 
+# from the original one. Almost all of the coefficients are also statistically significant. 
+# Hamiltons conclusion is not similar for this period of data.
+
+
+# In[68]:
+
+
+from statsmodels.stats.stattools import durbin_watson
+
+
+# In[69]:
+
+
+## Question-04/02 : perform Durbin-Watson test for serial correlation
+durbin_watson(hmrs.resid)
+
+
+# In[ ]:
+
+
+# H0 (null hypothesis): There is no correlation among the residuals. HA (alternative hypothesis): residuals are autocorrelated.
+# A test statistic of 2.04 indicates there is no serial correlation.
+
+
+# In[70]:
+
+
+## Question-04/02: Heteroscedasticity test
+import scipy.stats as stats
+
+
+# In[72]:
+
+
+cdf4901['u_sqr'] = hmrs.resid ** 2
+bphmod = smf.ols(formula='u_sqr ~ djgdp1 + djgdp2 + djgdp3 + djgdp4 + jpmax1 + jpmax2 + jpmax3 + jpmax4', data=cdf4901)
+bphres = bphmod.fit()
+bph_lm = bphres.nobs * bphres.rsquared
+bph_pv = 1 - stats.chi2.cdf(x=bph_lm,df= bphres.df_model)
+
+print()
+print('Testing for heteroskedasticity')
+print('Aux regression, R-squared = {}'.format(bphres.rsquared))
+print('Aux regression, d of free = {}'.format(bphres.df_model))
+print('Number of observations    = {}'.format(bphres.nobs))
+print('Breusch-Pagan LM-test     = {}'.format(round(bph_lm,2)))
+print('              p-value     = {}'.format(round(bph_pv,4)))
+print()
+
+
+# In[ ]:
+
+
+## Null Hypothesis (H0): Homoscedasticity is present (the residuals are distributed with equal variance)
+# Alternative Hypothesis (HA): Heteroscedasticity is present (the residuals are not distributed with equal variance)
+# P value is greater than 0.05/0.01, so we cannot reject the null hypothesis. Meaning that there is no heteroscadasticity.
+
+
+# In[73]:
+
+
+## Question-04/03: Granger causality test
+from statsmodels.tsa.stattools import grangercausalitytests
+
+
+# In[84]:
+
+
+grangercausalitytests (cdf4901[['gdp', 'jpmax']], maxlag=[4])
+
+
+# In[ ]:
+
+
+# Null Hypothesis (H0): Oil price change does not affect gdp, Alternative Hypothesis (H1): Oil price change does not affect gdp
+# Here, P value of F-statistic is 0. So we reject the null hypothesis saying that oil price change is useful to
+# forecast gdp.
+
+
+# In[85]:
+
+
+## Question-05: AR(4) model
+# estimate plain AR(4) model
+ar4m = smf.ols('dlgdp ~ djgdp1 + djgdp2 + djgdp3 + djgdp4',data=cdf4901)
+ar4mrs = ar4m.fit()
+print(ar4mrs.summary())
+
+
+# In[86]:
+
+
+## Question-05: perform Durbin-Watson test for serial correlation
+durbin_watson(ar4mrs.resid)
+
+
+# In[ ]:
+
+
+# H0 (null hypothesis): There is no correlation among the residuals. HA (alternative hypothesis): residuals are autocorrelated.
+# A test statistic of 2.04 indicates there is no serial correlation.
+
+
+# In[88]:
+
+
+cdf4901['u_sqr2'] = hmrs.resid ** 2
+bphmod2 = smf.ols(formula='u_sqr2 ~ djgdp1 + djgdp2 + djgdp3 + djgdp4', data=cdf4901)
+bphres2 = bphmod2.fit()
+bph_lm2 = bphres2.nobs * bphres2.rsquared
+bph_pv2 = 1 - stats.chi2.cdf(x=bph_lm,df= bphres2.df_model)
+
+print()
+print('Testing for heteroskedasticity')
+print('Aux regression, R-squared = {}'.format(bphres2.rsquared))
+print('Aux regression, d of free = {}'.format(bphres2.df_model))
+print('Number of observations    = {}'.format(bphres2.nobs))
+print('Breusch-Pagan LM-test     = {}'.format(round(bph_lm2,2)))
+print('              p-value     = {}'.format(round(bph_pv2,4)))
+print()
+
+
+# In[ ]:
+
+
+## Null Hypothesis (H0): Homoscedasticity is present (the residuals are distributed with equal variance)
+# Alternative Hypothesis (HA): Heteroscedasticity is present (the residuals are not distributed with equal variance)
+# P value is 0.2191, so we cannot reject the null hypothesis. Meaning that there is no heteroscadasticity.
+
+
+# In[ ]:
+
+
+# -----------------------------------------------------------------
+    # -- Dynamic forecast starting 2007Q3                            --
+    # -----------------------------------------------------------------
+
+
+# In[109]:
+
+
+sdate = datetime.datetime.strptime('2007-10-01', '%Y-%m-%d')
+
+
+# In[100]:
+
+
+# keep forecast here
+ghat4 = np.zeros(len(cdf))
+dghat = np.zeros(len(cdf))
+
+
+# In[106]:
+
+
+# loop over observations
+i = 0
+for t, v in cdf.iterrows():
+
+    if t < sdate:
+        
+        ghat4[i] = v['lgdp']
+        dghat[i] = v['dlgdp']
+    
+    else:
+        dghat[i] = (ar4m.params[0] + 
+                    ar4m.params[1]*dghat[i-1] +
+                    ar4m.params[2]*dghat[i-2] +
+                    ar4m.params[3]*dghat[i-3] +
+                    ar4m.params[4]*dghat[i-4])
+        
+ghat4[i] = ghat4[i-1] + dghat[i]
+i += 1
+
+
+# In[110]:
+
+
+# keep prediction
+    cdf['ghat4'] = ghat4
+
+
+# In[112]:
+
+
+# Forecast with Hamilton's model
+    # keep forecast here
+    jghat = np.zeros(len(cdf))
+    dghat = np.zeros(len(cdf))
+
+    #
+    # loop over observations
+    i = 0
+    for t, v in df.iterrows():
+        if t < sdate:
+            jghat[i] = v['lgdp']
+            dghat[i] = v['dlgdp']
+        else:
+            dghat[i] = (hmod.params[0] +
+                        hmod.params[1]*dghat[i-1] +
+                        hmod.params[2]*dghat[i-2] +
+                        hmod.params[3]*dghat[i-3] +
+                        hmod.params[4]*dghat[i-4] +
+                        hmod.params[5]*v['jpmax1'] +
+                        hmod.params[6]*v['jpmax2'] +
+                        hmod.params[7]*v['jpmax3'] +
+                        hmod.params[8]*v['jpmax4'])
+            jghat[i] = jghat[i-1] + dghat[i]
+
+        i += 1
+
+    #
+    # keep prediction
+    cdf['jghat'] = jghat
+
+
+# In[ ]:
+
+
+## Strived to fix the error and move forward. Did not find any result.
+
